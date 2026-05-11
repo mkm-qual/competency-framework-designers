@@ -12,7 +12,7 @@ npm run install:all
 npm run dev
 ```
 
-Visit **http://localhost:3001** in development.
+Visit **http://localhost:3002** in development.
 
 ## Default Admin Login
 
