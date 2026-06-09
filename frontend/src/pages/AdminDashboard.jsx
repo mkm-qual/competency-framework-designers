@@ -5,7 +5,7 @@ import AssessmentForm from '../components/AssessmentForm';
 import api from '../api';
 
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
-const TABS = ['Team Overview', 'Individual View', 'Users', 'Skills & Years'];
+const TABS = ['Team Overview', 'Individual View', 'Users', 'Skills & Years', 'Backups'];
 
 // ─── Reusable Modal ───────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
@@ -310,7 +310,7 @@ function UsersTab() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this user and all their assessments? This cannot be undone.')) return;
+    if (!confirm('Deactivate this user? Their assessment history will be preserved and remains accessible to admins.')) return;
     setDeleting(id);
     await api.delete(`/users/${id}`).catch(() => {});
     setDeleting(null);
@@ -511,6 +511,122 @@ function SkillsYearsTab() {
   );
 }
 
+// ─── Backups Tab ──────────────────────────────────────────────────────────────
+function BackupsTab() {
+  const [backups, setBackups] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [restoring, setRestoring] = useState(null);
+  const [message, setMessage] = useState(null); // { type: 'success'|'error', text }
+
+  const load = () => {
+    setLoading(true);
+    api.get('/backups').then(r => setBackups(r.data)).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+
+  const createBackup = async () => {
+    setCreating(true); setMessage(null);
+    try {
+      const r = await api.post('/backups/create');
+      setMessage({ type: 'success', text: `Backup created: ${r.data.filename}` });
+      setTimeout(load, 800); // wait for async backup to finish writing
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Backup failed' });
+    } finally { setCreating(false); }
+  };
+
+  const handleRestore = async (filename) => {
+    if (!confirm(`Restore from "${filename}"?\n\nA pre-restore backup will be created automatically. The server will restart to apply changes.`)) return;
+    setRestoring(filename); setMessage(null);
+    try {
+      const r = await api.post('/backups/restore', { filename, confirmed: true });
+      setMessage({ type: 'success', text: r.data.message + ' Please refresh in a few seconds.' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Restore failed' });
+    } finally { setRestoring(null); }
+  };
+
+  const formatSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (iso) => {
+    const d = new Date(iso);
+    return d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className="font-semibold text-gray-900">Database Backups</h3>
+          <p className="text-sm text-gray-400 mt-0.5">Daily automatic backups at 2:00 AM · Up to 30 kept · Manual backups never deleted</p>
+        </div>
+        <button onClick={createBackup} disabled={creating} className="btn-primary text-sm disabled:opacity-60">
+          {creating ? 'Creating...' : '+ Create Backup Now'}
+        </button>
+      </div>
+
+      {message && (
+        <div className={`rounded-xl px-4 py-3 text-sm font-medium border ${message.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="card">
+        {loading ? (
+          <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" /></div>
+        ) : backups.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm">No backups yet. Create your first backup above.</div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            <div className="grid grid-cols-12 pb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <span className="col-span-5">File</span>
+              <span className="col-span-2 text-center">Type</span>
+              <span className="col-span-2 text-center">Size</span>
+              <span className="col-span-2">Created</span>
+              <span className="col-span-1"></span>
+            </div>
+            {backups.map(b => (
+              <div key={b.filename} className="grid grid-cols-12 items-center py-3 gap-2">
+                <div className="col-span-5 min-w-0">
+                  <p className="text-sm font-mono text-gray-700 truncate">{b.filename}</p>
+                </div>
+                <div className="col-span-2 text-center">
+                  <span className={`inline-block text-xs px-2 py-0.5 rounded-full border font-medium ${
+                    b.label === 'manual'
+                      ? 'bg-brand-50 border-brand-200 text-brand-700'
+                      : b.label === 'pre-restore'
+                      ? 'bg-amber-50 border-amber-200 text-amber-700'
+                      : 'bg-gray-50 border-gray-200 text-gray-600'
+                  }`}>{b.label}</span>
+                </div>
+                <div className="col-span-2 text-center text-sm text-gray-500">{formatSize(b.size)}</div>
+                <div className="col-span-2 text-xs text-gray-400">{formatDate(b.created_at)}</div>
+                <div className="col-span-1 flex gap-1 justify-end">
+                  <a href={`/api/backups/download/${b.filename}`} download
+                    className="btn-secondary text-xs py-1 px-2" title="Download">↓</a>
+                  <button onClick={() => handleRestore(b.filename)} disabled={restoring === b.filename}
+                    className="text-xs px-2 py-1 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 transition-all disabled:opacity-50"
+                    title="Restore">↩</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 space-y-1">
+        <p className="font-semibold">Restore warning</p>
+        <p>Restoring replaces the current database with the selected backup. A pre-restore safety backup is always created first. The server will automatically restart — you may need to refresh the page after ~5 seconds.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Admin Dashboard ─────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState(0);
@@ -553,6 +669,7 @@ export default function AdminDashboard() {
         {activeTab === 1 && <IndividualView skills={skills} />}
         {activeTab === 2 && <UsersTab />}
         {activeTab === 3 && <SkillsYearsTab />}
+        {activeTab === 4 && <BackupsTab />}
       </div>
     </div>
   );

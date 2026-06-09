@@ -16,6 +16,7 @@ function init() {
       password_hash TEXT NOT NULL,
       name TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'designer')),
+      deleted_at TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -35,8 +36,8 @@ function init() {
 
     CREATE TABLE IF NOT EXISTS assessments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      assessee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      assessor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      assessee_id INTEGER NOT NULL REFERENCES users(id),
+      assessor_id INTEGER NOT NULL REFERENCES users(id),
       evaluator_type TEXT NOT NULL CHECK(evaluator_type IN ('self', 'manager')),
       skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
       score INTEGER NOT NULL CHECK(score >= 0 AND score <= 5),
@@ -47,6 +48,13 @@ function init() {
       UNIQUE(assessee_id, evaluator_type, skill_id, quarter, year)
     );
   `);
+
+  // Migration: add deleted_at column to existing users table if missing
+  const cols = db.pragma('table_info(users)').map(c => c.name);
+  if (!cols.includes('deleted_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT NULL');
+    console.log('[DB] Migration: added deleted_at column to users');
+  }
 
   // Seed default admin if not exists
   const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
