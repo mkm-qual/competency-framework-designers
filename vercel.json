@@ -1,29 +1,13 @@
 {
-  "services": {
-    "frontend": {
-      "root": "frontend",
-      "framework": "vite"
-    },
-    "backend": {
-      "root": "backend",
-      "buildCommand": "npm install && node migrate.js",
-      "startCommand": "node server.js"
-    }
-  },
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "frontend/dist",
   "rewrites": [
-    {
-      "source": "/api/(.*)?",
-      "destination": {
-        "type": "service",
-        "service": "backend"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "destination": {
-        "type": "service",
-        "service": "frontend"
-      }
+    { "source": "/api/(.*)", "destination": "/api/index.js" }
+  ],
+  "functions": {
+    "api/index.js": {
+      "memory": 512,
+      "maxDuration": 30
     }
-  ]
+  }
 }
