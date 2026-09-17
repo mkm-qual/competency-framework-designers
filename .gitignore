@@ -2,8 +2,7 @@ node_modules/
 backend/node_modules/
 frontend/node_modules/
 backend/data.db*
+backend/backups/
 frontend/dist/
 .env
 *.local
-# Backup DB files — keep the directory via .gitkeep but don't commit actual backups
-backend/backups/*.db

@@ -1,76 +1,89 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const db = require('../database');
+const pool = require('../database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-// List all active users (admin only)
-router.get('/', authenticate, requireAdmin, (req, res) => {
-  const users = db.prepare(
-    'SELECT id, username, name, role, created_at FROM users WHERE deleted_at IS NULL ORDER BY role, name'
-  ).all();
-  res.json(users);
+router.get('/', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, username, name, role, created_at FROM users WHERE deleted_at IS NULL ORDER BY role, name'
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
-// Create user (admin only)
-router.post('/', authenticate, requireAdmin, (req, res) => {
+router.post('/', authenticate, requireAdmin, async (req, res) => {
   const { username, password, name, role } = req.body;
   if (!username || !password || !name || !role) return res.status(400).json({ error: 'All fields required' });
   if (!['admin', 'designer'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
-  // Check if username exists among active users
-  const existing = db.prepare('SELECT id, deleted_at FROM users WHERE username = ?').get(username);
-  if (existing && !existing.deleted_at) {
-    return res.status(409).json({ error: 'Username already exists' });
-  }
-
-  const hash = bcrypt.hashSync(password, 10);
   try {
-    if (existing && existing.deleted_at) {
-      // Reactivate a previously deleted user with the same username
-      db.prepare('UPDATE users SET password_hash=?, name=?, role=?, deleted_at=NULL WHERE id=?')
-        .run(hash, name, role, existing.id);
-      const user = db.prepare('SELECT id, username, name, role FROM users WHERE id=?').get(existing.id);
-      return res.status(201).json(user);
+    const { rows: existing } = await pool.query('SELECT id, deleted_at FROM users WHERE username = $1', [username]);
+    const found = existing[0];
+    if (found && !found.deleted_at) return res.status(409).json({ error: 'Username already exists' });
+
+    const hash = bcrypt.hashSync(password, 10);
+    if (found && found.deleted_at) {
+      const { rows } = await pool.query(
+        'UPDATE users SET password_hash=$1, name=$2, role=$3, deleted_at=NULL WHERE id=$4 RETURNING id, username, name, role',
+        [hash, name, role, found.id]
+      );
+      return res.status(201).json(rows[0]);
     }
-    const result = db.prepare('INSERT INTO users (username, password_hash, name, role) VALUES (?, ?, ?, ?)').run(username, hash, name, role);
-    res.status(201).json({ id: result.lastInsertRowid, username, name, role });
+
+    const { rows } = await pool.query(
+      'INSERT INTO users (username, password_hash, name, role) VALUES ($1, $2, $3, $4) RETURNING id, username, name, role',
+      [username, hash, name, role]
+    );
+    res.status(201).json(rows[0]);
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Username already exists' });
-    throw e;
+    if (e.code === '23505') return res.status(409).json({ error: 'Username already exists' });
+    console.error('[users/post]', e.message);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Update user (admin only)
-router.put('/:id', authenticate, requireAdmin, (req, res) => {
+router.put('/:id', authenticate, requireAdmin, async (req, res) => {
   const { name, password } = req.body;
   const { id } = req.params;
-  if (name) db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, id);
-  if (password) {
-    const hash = bcrypt.hashSync(password, 10);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, id);
+  try {
+    if (name) await pool.query('UPDATE users SET name = $1 WHERE id = $2', [name, id]);
+    if (password) {
+      const hash = bcrypt.hashSync(password, 10);
+      await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id]);
+    }
+    const { rows } = await pool.query('SELECT id, username, name, role FROM users WHERE id = $1', [id]);
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
   }
-  const user = db.prepare('SELECT id, username, name, role FROM users WHERE id = ?').get(id);
-  res.json(user);
 });
 
-// Soft-delete user (admin only — preserves all assessment data)
-router.delete('/:id', authenticate, requireAdmin, (req, res) => {
+// Soft-delete: sets deleted_at, preserves all assessment data
+router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
   const { id } = req.params;
   if (parseInt(id) === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
-
-  // Soft-delete: mark deleted_at, DON'T remove any rows
-  db.prepare("UPDATE users SET deleted_at = datetime('now') WHERE id = ?").run(id);
-  res.json({ message: 'User deactivated. All assessment data is preserved and can be accessed by admin.' });
+  try {
+    await pool.query('UPDATE users SET deleted_at = NOW() WHERE id = $1', [id]);
+    res.json({ message: 'User deactivated. All assessment data is preserved and can be accessed by admin.' });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
-// List soft-deleted users (admin only — for data audit)
-router.get('/archived', authenticate, requireAdmin, (req, res) => {
-  const users = db.prepare(
-    'SELECT id, username, name, role, deleted_at, created_at FROM users WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC'
-  ).all();
-  res.json(users);
+router.get('/archived', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, username, name, role, deleted_at, created_at FROM users WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC'
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 module.exports = router;
