@@ -15,7 +15,7 @@ app.use('/api/skills', require('./routes/skills'));
 app.use('/api/years', require('./routes/years'));
 app.use('/api/assessments', require('./routes/assessments'));
 
-// Serve frontend only when running locally (Vercel serves static files via CDN)
+// Serve frontend build when running locally via PM2
 if (!process.env.VERCEL) {
   const frontendBuild = path.join(__dirname, '../frontend/dist');
   app.use(express.static(frontendBuild));
@@ -24,9 +24,6 @@ if (!process.env.VERCEL) {
   });
 }
 
-// Export for Vercel serverless — listen only when run directly (PM2/local)
-if (require.main === module) {
-  app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-}
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 
 module.exports = app;
