@@ -116,4 +116,25 @@ router.get('/user/:userId/history', authenticate, async (req, res) => {
   }
 });
 
+// Clear assessments for a user (optionally scoped to quarter/year/evaluator_type)
+router.delete('/user/:userId', authenticate, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  const { quarter, year, evaluator_type } = req.query;
+
+  let query = 'DELETE FROM assessments WHERE assessee_id = $1';
+  const params = [parseInt(userId)];
+
+  if (quarter) { query += ` AND quarter = $${params.length + 1}`; params.push(quarter); }
+  if (year) { query += ` AND year = $${params.length + 1}`; params.push(parseInt(year)); }
+  if (evaluator_type) { query += ` AND evaluator_type = $${params.length + 1}`; params.push(evaluator_type); }
+
+  try {
+    await pool.query(query, params);
+    res.json({ message: 'Assessments cleared' });
+  } catch (e) {
+    console.error('[assessments/delete]', e.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

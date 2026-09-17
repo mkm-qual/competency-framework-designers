@@ -179,6 +179,7 @@ function IndividualView({ skills }) {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showManagerForm, setShowManagerForm] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     api.get('/users').then(r => {
@@ -209,6 +210,20 @@ function IndividualView({ skills }) {
 
   const hasData = chartData.some(d => d.self !== undefined || d.manager !== undefined);
 
+  const handleClear = async () => {
+    if (!selected) return;
+    if (!confirm(`Clear all assessments for ${selected.name} in ${selectedQuarter} ${selectedYear}? This cannot be undone.`)) return;
+    setClearing(true);
+    try {
+      await api.delete(`/assessments/user/${selected.id}`, { params: { quarter: selectedQuarter, year: selectedYear } });
+      load();
+    } catch {
+      alert('Failed to clear assessments');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="card flex flex-wrap gap-4 items-end">
@@ -236,9 +251,18 @@ function IndividualView({ skills }) {
           </div>
         </div>
         {selected && (
-          <button onClick={() => setShowManagerForm(true)} className="btn-primary text-sm ml-auto">
-            + Manager Assessment
-          </button>
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={handleClear}
+              disabled={clearing}
+              className="text-sm px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40 transition-all"
+            >
+              {clearing ? 'Clearing...' : 'Clear Assessments'}
+            </button>
+            <button onClick={() => setShowManagerForm(true)} className="btn-primary text-sm">
+              + Manager Assessment
+            </button>
+          </div>
         )}
       </div>
 
