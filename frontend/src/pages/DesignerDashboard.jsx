@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../api';
 
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
+const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`;
+const currentYear = new Date().getFullYear();
 
 export default function DesignerDashboard() {
   const { user } = useAuth();
@@ -13,7 +15,7 @@ export default function DesignerDashboard() {
   const [skills, setSkills] = useState([]);
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null);
-  const [selectedQuarter, setSelectedQuarter] = useState('Q1');
+  const [selectedQuarter, setSelectedQuarter] = useState(currentQuarter);
   const [chartData, setChartData] = useState([]);
   const [history, setHistory] = useState([]);
   const [loadingChart, setLoadingChart] = useState(false);
@@ -27,7 +29,10 @@ export default function DesignerDashboard() {
       setSkills(s.data);
       const yrs = y.data;
       setYears(yrs);
-      if (yrs.length) setSelectedYear(yrs[0].year);
+      if (yrs.length) {
+        const match = yrs.find(y => y.year === currentYear);
+        setSelectedYear(match ? currentYear : yrs[0].year);
+      }
     });
   }, []);
 
@@ -127,6 +132,8 @@ export default function DesignerDashboard() {
             <AssessmentForm
               assesseeId={user.id}
               evaluatorType="self"
+              initialQuarter={selectedQuarter}
+              initialYear={selectedYear}
               onSaved={() => {
                 setView('chart');
                 api.get(`/assessments/user/${user.id}/history`).then(r => setHistory(r.data));

@@ -6,6 +6,8 @@ import api from '../api';
 
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
 const TABS = ['Team Overview', 'Individual View', 'Users', 'Skills & Years'];
+const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`;
+const currentYear = new Date().getFullYear();
 
 // ─── Reusable Modal ───────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
@@ -30,7 +32,7 @@ function Modal({ title, onClose, children }) {
 function TeamOverview({ skills }) {
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null);
-  const [selectedQuarter, setSelectedQuarter] = useState('Q1');
+  const [selectedQuarter, setSelectedQuarter] = useState(currentQuarter);
   const [filter, setFilter] = useState(''); // username filter
   const [designers, setDesigners] = useState([]);
   const [teamData, setTeamData] = useState([]);
@@ -40,7 +42,10 @@ function TeamOverview({ skills }) {
   useEffect(() => {
     api.get('/years').then(r => {
       setYears(r.data);
-      if (r.data.length) setSelectedYear(r.data[0].year);
+      if (r.data.length) {
+        const match = r.data.find(y => y.year === currentYear);
+        setSelectedYear(match ? currentYear : r.data[0].year);
+      }
     });
     api.get('/users').then(r => setDesigners(r.data.filter(u => u.role === 'designer')));
   }, []);
@@ -175,7 +180,7 @@ function IndividualView({ skills }) {
   const [selected, setSelected] = useState(null);
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null);
-  const [selectedQuarter, setSelectedQuarter] = useState('Q1');
+  const [selectedQuarter, setSelectedQuarter] = useState(currentQuarter);
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showManagerForm, setShowManagerForm] = useState(false);
@@ -189,7 +194,10 @@ function IndividualView({ skills }) {
     });
     api.get('/years').then(r => {
       setYears(r.data);
-      if (r.data.length) setSelectedYear(r.data[0].year);
+      if (r.data.length) {
+        const match = r.data.find(y => y.year === currentYear);
+        setSelectedYear(match ? currentYear : r.data[0].year);
+      }
     });
   }, []);
 
@@ -285,6 +293,8 @@ function IndividualView({ skills }) {
             assesseeId={selected.id}
             assesseeName={selected.name}
             evaluatorType="manager"
+            initialQuarter={selectedQuarter}
+            initialYear={selectedYear}
             onSaved={() => { setShowManagerForm(false); load(); }}
             onCancel={() => setShowManagerForm(false)}
           />

@@ -10,11 +10,14 @@ const SCALE = [
   { value: 5, label: 'Teaches the Teacher', color: 'bg-emerald-100 border-emerald-300 text-emerald-800' },
 ];
 
-export default function AssessmentForm({ assesseeId, assesseeName, evaluatorType, onSaved, onCancel }) {
+const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`;
+const currentYear = new Date().getFullYear();
+
+export default function AssessmentForm({ assesseeId, assesseeName, evaluatorType, onSaved, onCancel, initialQuarter, initialYear }) {
   const [skills, setSkills] = useState([]);
   const [years, setYears] = useState([]);
-  const [quarter, setQuarter] = useState('Q1');
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [quarter, setQuarter] = useState(initialQuarter || currentQuarter);
+  const [year, setYear] = useState(initialYear || currentYear);
   const [scores, setScores] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -24,7 +27,10 @@ export default function AssessmentForm({ assesseeId, assesseeName, evaluatorType
     Promise.all([api.get('/skills'), api.get('/years')]).then(([s, y]) => {
       setSkills(s.data);
       setYears(y.data);
-      if (y.data.length) setYear(y.data[0].year);
+      // Fall back to first year in list only if the initial year isn't available
+      if (y.data.length && !y.data.find(yr => yr.year === year)) {
+        setYear(y.data[0].year);
+      }
     });
   }, []);
 
