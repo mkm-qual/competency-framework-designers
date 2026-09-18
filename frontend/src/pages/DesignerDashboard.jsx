@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navbar from '../components/Navbar';
 import SpiderChart from '../components/SpiderChart';
+import GrowthChart from '../components/GrowthChart';
 import AssessmentForm from '../components/AssessmentForm';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api';
@@ -19,6 +20,10 @@ export default function DesignerDashboard() {
   const [chartData, setChartData] = useState([]);
   const [history, setHistory] = useState([]);
   const [loadingChart, setLoadingChart] = useState(false);
+  const [growthView, setGrowthView] = useState(false);
+  const [growthType, setGrowthType] = useState('self');
+  const [growthData, setGrowthData] = useState([]);
+  const [loadingGrowth, setLoadingGrowth] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
   const [pwError, setPwError] = useState('');
@@ -60,6 +65,26 @@ export default function DesignerDashboard() {
   }, [selectedYear, selectedQuarter, skills, user.id]);
 
   useEffect(() => { loadChart(); }, [loadChart]);
+
+  const loadGrowth = useCallback(async () => {
+    if (!selectedYear || !skills.length) return;
+    setLoadingGrowth(true);
+    const rows = await Promise.all(
+      QUARTERS.map(q =>
+        api.get(`/assessments/user/${user.id}`, {
+          params: { quarter: q, year: selectedYear, evaluator_type: growthType }
+        }).then(r => {
+          const row = { quarter: q };
+          r.data.forEach(a => { row[a.skill_name] = a.score; });
+          return row;
+        }).catch(() => ({ quarter: q }))
+      )
+    );
+    setGrowthData(rows);
+    setLoadingGrowth(false);
+  }, [selectedYear, growthType, skills, user.id]);
+
+  useEffect(() => { if (growthView) loadGrowth(); }, [growthView, loadGrowth]);
 
   const hasData = chartData.some(d => d.self !== undefined || d.manager !== undefined);
 
@@ -152,28 +177,40 @@ export default function DesignerDashboard() {
                   {years.map(y => <option key={y.id} value={y.year}>{y.year}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="label">Quarter</label>
-                <div className="flex gap-1">
-                  {QUARTERS.map(q => (
-                    <button
-                      key={q}
-                      onClick={() => setSelectedQuarter(q)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                        selectedQuarter === q
-                          ? 'bg-brand-600 text-white border-brand-600'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              {/* Completed badge */}
-              {completedPeriods[`${selectedYear}-${selectedQuarter}`] && (
-                <div className="ml-auto flex flex-wrap gap-1.5">
+              {growthView ? (
+                <div>
+                  <label className="label">Evaluator</label>
+                  <div className="flex gap-1">
+                    {['self', 'manager'].map(t => (
+                      <button key={t} onClick={() => setGrowthType(t)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border capitalize transition-all ${
+                          growthType === t ? 'bg-brand-600 text-white border-brand-600' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="label">Quarter</label>
+                  <div className="flex gap-1">
+                    {QUARTERS.map(q => (
+                      <button key={q} onClick={() => setSelectedQuarter(q)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                          selectedQuarter === q ? 'bg-brand-600 text-white border-brand-600' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Completed badge (map view only) */}
+              {!growthView && completedPeriods[`${selectedYear}-${selectedQuarter}`] && (
+                <div className="flex flex-wrap gap-1.5">
                   {completedPeriods[`${selectedYear}-${selectedQuarter}`].types.map(t => (
                     <span key={t} className={`badge border ${t === 'self' ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
                       {t === 'self' ? 'Self' : 'Manager'} assessed
@@ -181,11 +218,31 @@ export default function DesignerDashboard() {
                   ))}
                 </div>
               )}
+
+              {/* Map / Growth toggle */}
+              <div className="ml-auto flex bg-gray-100 rounded-lg p-0.5">
+                <button onClick={() => setGrowthView(false)}
+                  className={`px-3 py-1 rounded-md text-sm transition-all ${!growthView ? 'bg-white shadow-sm text-gray-800 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+                  Map
+                </button>
+                <button onClick={() => setGrowthView(true)}
+                  className={`px-3 py-1 rounded-md text-sm transition-all ${growthView ? 'bg-white shadow-sm text-gray-800 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+                  Growth
+                </button>
+              </div>
             </div>
 
             {/* Chart */}
             <div className="card">
-              {loadingChart ? (
+              {growthView ? (
+                loadingGrowth ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
+                  </div>
+                ) : (
+                  <GrowthChart data={growthData} skills={skills} />
+                )
+              ) : loadingChart ? (
                 <div className="flex items-center justify-center h-64">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
                 </div>
